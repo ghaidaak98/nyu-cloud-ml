@@ -3,24 +3,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Load the dataset from a CSV file
 file_path = "squeezenet1_1_output.csv"
 logging.info(f"Loading data from {file_path}")
 data_frame = pd.read_csv(file_path)
 
-# Check if the DataFrame is empty
 if data_frame.empty:
     logging.error("The DataFrame is empty. Please check the input file.")
     raise ValueError("The DataFrame is empty.")
 
-# Convert execution time to numeric, coercing errors to NaN
 logging.info("Converting execution time to numeric.")
 data_frame["gpu_time_ns"] = pd.to_numeric(data_frame["gpu__time_duration.sum"], errors='coerce')
 
-# Calculate additional metrics
 logging.info("Calculating additional metrics.")
 data_frame["Memory Traffic Total"] = data_frame["dram__bytes_read.sum"] + data_frame["dram__bytes_write.sum"]
 data_frame["Total FLOPs"] = (
@@ -35,51 +30,45 @@ logging.info("Converting FLOPs and Memory Traffic to numeric.")
 data_frame["Total FLOPs"] = pd.to_numeric(data_frame["Total FLOPs"], errors='coerce')
 data_frame["Memory Traffic Total"] = pd.to_numeric(data_frame["Memory Traffic Total"], errors='coerce')
 
-# Calculate operational intensity (FLOPs / Bytes)
 logging.info("Calculating operational intensity.")
 data_frame["Operational Intensity"] = data_frame["Total FLOPs"] / data_frame["Memory Traffic Total"]
 
-# Calculate performance (FLOPs / Seconds)
 logging.info("Calculating performance in GFLOPs.")
 data_frame["Performance (GFLOPs)"] = data_frame["Total FLOPs"] / data_frame["Execution Time (Seconds)"] / 1e9
 
-# Define system performance limits
-memory_bandwidth_limit = 1500  # GB/s (example value)
-computational_performance_limit = 20  # TFLOPs (example value)
+memory_bandwidth_limit = 1500  
+computational_performance_limit = 20 
 
-# Create a new performance plot
-fig, ax = plt.subplots(figsize=(7, 7))  # Changed graph size to square (8x8)
+fig, ax = plt.subplots(figsize=(7, 7)) 
 
-# Plot the performance boundaries
+
 logging.info("Plotting performance boundaries.")
-operational_intensity_range = np.logspace(-2, 2, 100)  # Operational intensity range
+operational_intensity_range = np.logspace(-2, 2, 100) 
 memory_limit_curve = operational_intensity_range * memory_bandwidth_limit
 compute_limit_curve = [computational_performance_limit] * len(operational_intensity_range)
 
-# Change colors to blue and pastel colors for the plot
+
 ax.plot(operational_intensity_range, memory_limit_curve, label="Memory Bandwidth (1500 GB/s)", linestyle="-.", color="lightblue")
 ax.plot(operational_intensity_range, compute_limit_curve, label="Compute Peak (20 TFLOPs)", linestyle=":", color="lightcoral")
 
-# Plot data points with a different style
+
 logging.info("Plotting data points.")
 ax.scatter(data_frame["Operational Intensity"], data_frame["Performance (GFLOPs)"], color="orange", marker="o", s=100, label="Kernels")
 
-# Set labels and title
 ax.set_xscale("log")
 ax.set_yscale("log")
 ax.set_xlabel("Operational Intensity (FLOPs/Byte)", fontsize=11)
 ax.set_ylabel("Performance (GFLOPs)", fontsize=11)
 ax.set_title("Roofline (Squeezenet1_1)", fontsize=14)  # Changed title to "Roofline"
 ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=3)  # Position legend at the bottom
-
-# Remove grid
 ax.grid(False)
-
-# Show plot
 plt.tight_layout()
 logging.info("Displaying the plot.")
 plt.show()
 
+output_file = "roofline_squeezenet1_1.png"
+fig.savefig(output_file, bbox_inches='tight')
+logging.info(f"Plot saved as {output_file}.")
 
 # Save the plot to a file
 output_file = "roofline_squeezenet1_1.png"
