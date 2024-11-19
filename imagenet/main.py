@@ -20,6 +20,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
+import torch.cuda.profiler as ncu
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -106,11 +107,8 @@ def main():
 
     if torch.cuda.is_available():
         ngpus_per_node = torch.cuda.device_count()
-        if ngpus_per_node == 1 and args.dist_backend == "nccl":
-            warnings.warn("nccl backend >=2.5 requires GPU count>1, see https://github.com/NVIDIA/nccl/issues/103 perhaps use 'gloo'")
     else:
         ngpus_per_node = 1
-
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
@@ -122,6 +120,23 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
+
+class VerboseExecution(nn.Module):
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+        print(f"VE: model {model}")
+
+        # Register a hook for each layer
+        for name, layer in self.model.named_modules():
+            layer.__name__ = name
+            layer.register_forward_hook(
+                    lambda layer, args, output: print(f"{layer.__name__}: {type(layer)} : {args[0].shape} : {output.shape}")
+            )
+
+    def forward(self, x):
+        return self.model(x)
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
@@ -269,6 +284,10 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=val_sampler)
 
+    for name, param in model.named_parameters():
+        print(name, param.size())
+    model = VerboseExecution(model)
+
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
@@ -278,7 +297,9 @@ def main_worker(gpu, ngpus_per_node, args):
             train_sampler.set_epoch(epoch)
 
         # train for one epoch
+        ncu.start()
         train(train_loader, model, criterion, optimizer, epoch, device, args)
+        ncu.stop()
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -346,6 +367,8 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
         if i % args.print_freq == 0:
             progress.display(i + 1)
 
+        break
+
 
 def validate(val_loader, model, criterion, args):
 
@@ -378,6 +401,7 @@ def validate(val_loader, model, criterion, args):
 
                 if i % args.print_freq == 0:
                     progress.display(i + 1)
+                break
 
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
